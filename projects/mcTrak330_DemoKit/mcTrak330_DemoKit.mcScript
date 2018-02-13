@@ -1,0 +1,228 @@
+﻿Enum TIME_FORMAT As Byte
+    '1: seconds //alternate unix timestamp format
+    '2: seconds as milliseconds (ie ends in 000)
+    '3: milliseconds //unix format
+    '4: seconds.milliseconds
+    '5: microseconds
+    '5: seconds.microseconds
+    NONE = 0
+    T_SECONDS = 1
+    T_SECONDS_AS_MILLISECONDS = 2
+    T_MILLISECONDS = 3
+    T_SECONDS_MILLISECONDS = 4
+    T_MICROSECONDS = 5
+    T_SECONDS_MICROSECONDS = 6
+End Enum
+
+Class mcTrak330_DemoKit
+    
+    Const MSG_TYPE_SENSOR As Integer = 1
+    Const MSG_TYPE_WIFI_LOC As Integer = 2
+    
+    Const MAX_WIFI_APS As Integer = 5
+    Shared Booted As Boolean = False
+    
+    'Required to put Wisol device in sleep mode (SigFox device) 
+    'Shared _sfModule As WSSFM10 = New WSSFM10(My.Pin11, My.Pin6, My.Pin9, My.Pin8)
+    
+    Shared _wifiDevice As ESP8266 = New ESP8266(My.WifiRx, My.WifiTx, My.WifiPowerEnable, My.WifiNotReset, My.WifiEnable) 'uartTx As Pin, uartRx As Pin, wifiPwr As Pin, wifinRst As Pin, wifiEn As Pin
+    
+    Shared _rangeSensor As VL53L0X
+    Shared _opticalSensor As OPT3001
+    Shared _bmeSensor As BME280
+    
+    Shared _battVoltage As Pin = My.Pin0
+    Shared _led As Pin = My.Pin5
+    
+    Shared Alternate As Boolean = False
+    
+    Shared Event Boot()
+        _battVoltage.PinMode = PinMode.AnalogInput
+        _led.PinMode = PinMode.DigitalOutput
+        
+        _rangeSensor = New VL53L0X(My.Pin7, My.Pin10)
+        _opticalSensor = New OPT3001(My.SCL, My.SDA, 0x44)
+        _bmeSensor = New BME280
+        
+        If _bmeSensor.online Then
+            _bmeSensor.setMode(BME280.FORCED) //set to read-on-demand mode (this is default anyway)
+        End If
+        
+        'put wisol module in sleep mode
+        '_sfModule.InitializeDeepSleep ()
+        //_wifiDevice.Reset()
+        Booted = True
+    End Event
+    
+    Shared Event GetSensorReadings() RaiseEvent Every 60 Seconds
+        If Not Booted Then
+            Return
+        End If
+        _led.Set()
+        Thread.Sleep(30000)
+        _led.Clear()
+        'put wisol module in sleep mode
+        '_sfModule.InitializeDeepSleep()
+        Dim distance As Integer = _rangeSensor.GetDistance()
+        Dim lux As Float = _opticalSensor.GetLux()
+        
+        Dim dataJson As Json = New Json
+        dataJson.Add("msgType", MSG_TYPE_SENSOR)
+        If Alternate Then
+            //Dim uid As String = My.Device.Uid.Format("X8")    //now in metadadata
+            'Timestamp
+            Dim timenow As String = Time.getUnixTimestamp(TIME_FORMAT.T_MILLISECONDS)
+            Dim uptime_string As String = Time.getUptimeString()
+            Dim Uptime As Integer = My.Device.Uptime
+            'Battery
+            Dim vBat As Float = _battVoltage.Voltage.ToFloat / 1000F
+            'memory
+            Dim memory As Integer = My.Device.MemoryAvailable
+            //dataJson.Add("uid", uid)
+            dataJson.Add("up", Uptime)
+            dataJson.Add("mem", memory)
+            dataJson.Add("uptime", uptime_string)
+            dataJson.Add("time", timenow)
+            dataJson.Add("vbat", vBat)
+            dataJson.Add("dist", distance)
+            dataJson.Add("lux", lux)
+        Else
+            'BME280 measurements
+            Dim temperature As Float = _bmeSensor.readTemperature()
+            Dim humidity As Float = _bmeSensor.readHumidity()
+            Dim pressure As Float = _bmeSensor.readPressure()
+            Dim altitudeMeters As Float = _bmeSensor.readAltitude() //1190.25F
+            Dim altitudeFeet As Float = _bmeSensor.readAltitudeFeet()
+            Dim dewPoint As Float = _bmeSensor.readDewPoint()
+            'Internal tmp measurement
+            Dim temp As Float = TMP102.GetTemp()
+            dataJson.Add("temp", temp)
+            dataJson.Add("t", temperature)
+            dataJson.Add("hm", humidity)
+            dataJson.Add("Pr", pressure)
+            dataJson.Add("aM", altitudeMeters)
+            dataJson.Add("Af", altitudeFeet)
+            dataJson.Add("dP", dewPoint)
+            dataJson.Add("dist", distance)
+            dataJson.Add("lux", lux)
+        End If
+        
+        Dim result As Boolean = My.mcCloud.Integrations.Publish(2, dataJson, 30)
+        
+        If Not result Then
+            'sending to integration failed, try one more time
+            My.mcCloud.Integrations.Publish(2, dataJson, 30)
+        End If
+        Alternate = Not Alternate
+    End Event
+    
+    Shared Event GetWifiLocation() RaiseEvent Every 90 Seconds //3 Minutes
+        //Dim localAps As AccessPoint
+        Dim aps As String = _wifiDevice.GetListOfAps()
+        //Dim cnt As Integer = 0
+        
+        '        If aps = Nothing Then
+        '            aps = New ListOfObject
+        '        End If
+        
+        Dim Uptime As Integer = My.Device.Uptime
+        Dim memory As Integer = My.Device.MemoryAvailable
+        
+        _led.Set()
+        Thread.Sleep(30000)
+        _led.Clear()
+        Thread.Sleep(300000)
+        _led.Set()
+        Thread.Sleep(30000)
+        _led.Clear()
+        
+        //Dim apString As String = ""
+        Dim dataToPub As Json = New Json
+        
+        //Dim uid As String = My.Device.Uid.Format("X8")
+        If aps.Length = 0 Then
+            'no aps found
+            //aps = _wifiDevice.getBuf(20)
+            dataToPub.Add("up", Uptime)
+            dataToPub.Add("mem", memory)
+            //dataToPub.Add("msgType", MSG_TYPE_WIFI_LOC)
+            //dataToPub.Add("aps", aps)
+        Else
+            'aps found, now parse
+            //apString = _wifiDevice.getBuf(60)
+            //apString = apString.Replace ("+CWLAP:", "").Replace ("\x22", "").Replace ("/r", ";").Replace ("/n", ";")
+            
+            '            For Each ap In aps
+            '                memory = My.Device.MemoryAvailable
+            '                If cnt >= MAX_WIFI_APS Or memory < 4000 Then
+            '                    Exit For
+            '                End If
+            '                localAps = ap.Cast(AccessPoint)
+            '                
+            '                apString = apString + localAps.MacAddress(0).ToByte.Format("x2") + ":" + localAps.MacAddress(1).ToByte.Format("x2") + ":" + localAps.MacAddress(2).ToByte.Format("x2") + ":" + localAps.MacAddress(3).ToByte.Format("x2") + ":" + localAps.MacAddress(4).ToByte.Format("x2") + ":" + localAps.MacAddress(5).ToByte.Format("x2") + "," + localAps.Rssi.ToString + ";"
+            '                cnt = cnt + 1
+            '                
+            '            Next
+            
+            //dataToPub.Add("uid", uid)   
+            //dataToPub.Add("msgType", MSG_TYPE_WIFI_LOC)
+            dataToPub.Add("up", Uptime)
+            dataToPub.Add("mem", memory)
+            dataToPub.Add("aps", aps)
+        End If
+        
+        Dim result As Boolean = My.mcCloud.Integrations.Publish(3, dataToPub, 30)
+        
+        If result = False Then
+            'sending to integration failed, try one more time
+            My.mcCloud.Integrations.Publish(3, dataToPub, 30)
+        End If
+        _led.Set()
+        Thread.Sleep(30000)
+        _led.Clear()
+        Thread.Sleep(300000)
+        _led.Set()
+        Thread.Sleep(30000)
+        _led.Clear()
+    End Event
+End Class 
+
+
+Class Time
+    Shared Function getUnixTimestamp(format As TIME_FORMAT) As String
+        Dim TimestampOffset As Integer = 946670400 //difference between unix epoch and MCThings epoch
+        Dim TimeZoneOffset As Integer = 14400 //timezone does not seem to be working//-18000 //Eastern Time (-5 from Zulu)
+        Dim timenow As Long = (DateTime.Now.ToInteger + TimestampOffset + TimeZoneOffset).ToLong
+        Select format
+            Case TIME_FORMAT.T_SECONDS
+                Return timenow.Format("F0")
+            Case TIME_FORMAT.T_SECONDS_AS_MILLISECONDS
+                Return (timenow * 1000).Format("F0")
+            Case TIME_FORMAT.T_MILLISECONDS
+                Return (timenow * 1000).Format("F0")
+            Case TIME_FORMAT.T_SECONDS_MILLISECONDS
+                Return timenow.Format("F3")
+            Case TIME_FORMAT.T_MICROSECONDS
+                Return (timenow * 1000000).Format("F0")
+            Case TIME_FORMAT.T_SECONDS_MICROSECONDS
+                Return timenow.Format("F6")
+            Case Else
+                Return (timenow * 1000).Format("F0")
+        End Select
+    End Function
+    
+    Shared Function getUptimeString() As String
+        //get uptime in days:hours:minutes:seconds format
+        Dim secs As Integer = My.Device.Uptime
+        
+        Dim day As Integer = (secs / 86400).ToInteger
+        secs -= 86400 * day
+        Dim hrs As Integer = (secs / 3600).ToInteger
+        secs -= 3600 * hrs
+        Dim mins As Integer = (secs / 60).ToInteger
+        secs -= 60 * mins
+        
+        Dim uptime_string As String = day.Format("D3") + ":" + hrs.Format("D2") + ":" + mins.Format("D2") + ":" + secs.Format("D2")
+        Return uptime_string
+    End Function    
+End Class

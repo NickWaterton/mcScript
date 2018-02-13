@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" xmlns="http://schemas.mcthings.com/mcstudio">
+  <AutoCompileDisabled>false</AutoCompileDisabled>
+  <DeviceType>Mod120</DeviceType>
+  <DocumentSettings>
+    <DocumentSetting z:Id="i2">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>SenseBoardtwoEvent.mcScript</FileSpec>
+      <Name>SenseBoardtwoEvent</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i3">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>BME280.mcScript</FileSpec>
+      <Name>BME280</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i4">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>TSL2561.mcscript</FileSpec>
+      <Name>TSL2561</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i5">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>TMP102.mcScript</FileSpec>
+      <Name>TMP102</Name>
+    </DocumentSetting>
+  </DocumentSettings>
+  <LastDocumentName>SenseBoardtwoEvent.mcScript</LastDocumentName>
+  <ProjectName>SenseBoardtwoEvent</ProjectName>
+</ProjectSetting>

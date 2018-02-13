@@ -1,0 +1,235 @@
+﻿Class WSSFM10 
+    
+    Private _uart As Uart = My.Uart0
+    Private _buf As ListOfByte = New ListOfByte
+    Private _uartTx As Pin
+    Private _uartRx As Pin
+    Private _nRst As Pin
+    Private _wake As Pin
+    
+    Const _BAUDRATE As Integer = 9600
+    
+    Public Sub New(uartTx As Pin, uartRx As Pin, nRst As Pin, wake As Pin)
+        _uartTx = uartTx
+        _uartRx = uartRx
+        _nRst = nRst
+        _wake = wake
+        
+    End Sub
+    
+    Public Sub Enable()
+        _nRst.PinMode = PinMode.DigitalOutput
+        _nRst.Clear()
+        Thread.Sleep(5000)
+        _nRst.Set()
+        Thread.Sleep(200000)
+    End Sub
+    
+    Public Sub Disable()
+        
+        _nRst.PinMode = PinMode.DigitalOutput
+        _nRst.Clear()
+        _nRst.PinMode = PinMode.DigitalInput
+    End Sub    
+    
+    Public Sub Receive()
+        Dim chr As Integer = _uart.Read()
+        While chr >= 0
+            _buf.AddByte(chr.ToByte)
+            chr = _uart.Read()
+        End While
+    End Sub
+    
+    Public Function SendFrame(frame As ListOfByte) As Boolean
+        'ensure SF message is between 1 and 12 bytes 
+        If frame.Count >= 1 And frame.Count <= 12 Then
+            
+            _uart.Open(_BAUDRATE, _uartTx, _uartRx)
+            Enable()
+            'check to see if device is in correct macrochannel
+            _buf.Clear()
+            _uart.Write("AT$GI?\x0D\x0A")
+            If Not WaitForResponse(25000) Then
+                SendToDeepSleep()
+                _uart.Close()
+                Disable()
+                Return False
+            Else
+                Dim str As String = _buf.ToString
+                _buf.Clear()
+                Dim xStr As String = str.SubString(0, 1)
+                Dim yStr As String = str.SubString(2, 1)
+                Dim x As Integer = 0
+                Dim y As Integer = 0
+                
+                Integer.TryConvert(xStr, 10, x)
+                Integer.TryConvert(yStr, 10, y)
+                
+                If x = 0 Or y < 3 Then
+                    'reset channel
+                    _buf.Clear()
+                    _uart.Write("AT$RC\x0D\x0A")
+                    If Not WaitForResponse(25000) Then
+                        SendToDeepSleep()
+                        _uart.Close()
+                        Disable()
+                        Return False
+                    End If                    
+                End If
+                
+            End If
+            
+            Dim atCommandString As String = "AT$SF=" 
+            For Each element In frame
+                atCommandString = atCommandString + element.Format("x2")
+            Next
+            atCommandString = atCommandString + "\x0D\x0A"
+            _buf.Clear()
+            _uart.Write(atCommandString)
+            'wait for message to finish (could take up to 4 seconds)
+            If Not WaitForResponse(4000000) Then
+                SendToDeepSleep()
+                _uart.Close()
+                Disable()
+                Return False
+            Else
+                SendToDeepSleep()
+                _uart.Close()
+                Disable()
+                Return True
+            End If 
+            
+        End If
+        Disable()
+        Return False
+    End Function
+    
+    Public Function SendContinuousWave(freq As Integer, state As Boolean) As Boolean
+        Dim onOff As Integer = 0
+        If state = True Then
+            onOff = 1
+        Else
+            onOff = 0
+        End If
+        Dim atCommandString As String = "AT$CW=" + freq.ToString + "," + onOff.ToString + ",24\x0D\x0A"
+        _uart.Open(_BAUDRATE, _uartTx, _uartRx)
+        Enable()
+        _buf.Clear()
+        _uart.Write(atCommandString)
+        If Not WaitForResponse(3000000) Then
+            SendToDeepSleep()
+            _uart.Close()
+            Disable()
+            Return False
+        End If
+        
+        If state = False Then
+            SendToDeepSleep()
+            Disable()
+        End If
+        
+        _uart.Close()
+        Return True
+    End Function
+    
+    Public Function SendToDeepSleep() As Boolean
+        Dim atCommandString As String = "AT$P=2\x0D\x0A"
+        _buf.Clear()
+        _uart.Write(atCommandString)
+        If Not WaitForResponse(3000000) Then
+            Return False
+            
+        End If
+        Return True
+    End Function
+    
+    Public Function InitializeDeepSleep() As Boolean
+        Dim atCommandString As String = "AT$P=2\x0D\x0A"
+        Enable()
+        _buf.Clear()
+        _uart.Write(atCommandString)
+        If Not WaitForResponse(3000000) Then
+            _uart.Close()
+            Disable()
+            Return False
+            
+        End If
+        _uart.Close()
+        Disable()
+        Return True
+    End Function
+    
+    Public Function GetDeviceID() As ListOfByte
+        Dim atCommandString As String = "AT$I=10\x0D\x0A"
+        _uart.Open(_BAUDRATE, _uartTx, _uartRx)
+        Enable()
+        _buf.Clear()
+        _uart.Write(atCommandString)    
+        
+        If Not WaitForResponse(100000) Then
+            SendToDeepSleep()
+            _uart.Close()
+            Disable()
+            Return Nothing
+        Else
+            
+            Dim devId As ListOfByte = New ListOfByte
+            Dim str As String = _buf.ToString
+            For i = 0 To 3
+                Dim bStr As String = "0x" + str.SubString((i * 2), 2)
+                Dim b As Byte = 0
+                Byte.TryConvert(bStr, 16, b)
+                devId.Add(b)
+            Next
+            SendToDeepSleep()
+            _uart.Close()
+            Disable()
+            Return devId
+        End If
+        Return Nothing
+    End Function
+    
+    Public Function GetDevicePAC() As ListOfByte
+        Dim atCommandString As String = "AT$I=11\x0D\x0A"
+        _uart.Open(_BAUDRATE, _uartTx, _uartRx)
+        Enable()
+        _buf.Clear()
+        _uart.Write(atCommandString)    
+        
+        If Not WaitForResponse(100000) Then
+            SendToDeepSleep()
+            _uart.Close()
+            Disable()
+            Return Nothing
+        Else
+            
+            Dim pac As ListOfByte = New ListOfByte
+            Dim str As String = _buf.ToString
+            For i = 0 To 7
+                Dim bStr As String = "0x" + str.SubString((i * 2), 2)
+                Dim b As Byte = 0
+                Byte.TryConvert(bStr, 16, b)
+                pac.Add(b)
+            Next
+            SendToDeepSleep()
+            _uart.Close()            
+            Disable()
+            Return pac
+            
+        End If
+        Disable()
+        Return Nothing
+    End Function
+    
+    Private Function WaitForResponse(msSleep As Integer) As Boolean
+        Thread.Sleep(msSleep)
+        Receive()
+        If _buf.Count >= 3 Then '+CR+LF
+            If _buf(_buf.Count - 2) = 0x0d And _buf(_buf.Count - 1) = 0x0a Then
+                Return True
+            End If
+        End If       
+        Return False
+    End Function
+    
+End Class

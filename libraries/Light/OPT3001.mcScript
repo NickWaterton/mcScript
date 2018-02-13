@@ -1,0 +1,108 @@
+﻿Class OPT3001
+    
+    Const REG_RESULT As Byte = 0x00
+    Const REG_CONFIGURATION As Byte = 0x01
+    Const REG_LOW_LIMIT As Byte = 0x02
+    Const REG_HIGH_LIMIT As Byte = 0x03
+    Const REG_MANUFACTURER_ID As Byte = 0x7e
+    Const REG_DEVICE_ID As Byte = 0x7f
+    
+    Const CONFIG_LSB_RESET As Byte = 0x10
+    Const CONFIG_MSB_RESET As Byte = 0xc0
+    
+    Const CONFIG_MODE_SINGLE As Byte = 0x02
+    
+    Const CONFIG_CONVERSION_READY As Byte = 0x80
+    
+    Const I2C_SPEED As Integer = 250000
+    
+    Private _dev As I2c
+    Private _sda As Pin = My.SDA
+    Private _scl As Pin = My.SCL
+    Private _adr As Byte
+    
+    Public Sub New(address As Byte)
+        _adr = address
+        _dev = My.I2c0
+    End Sub 
+    
+    Public Function GetLux() As Float
+        _dev.Open(_adr, I2C_SPEED, _scl, _sda)
+        Dim buf As ListOfByte = New ListOfByte
+        
+        'setup single-shot converstion
+        buf.Add(REG_CONFIGURATION)
+        buf.Add(CONFIG_MSB_RESET | CONFIG_MODE_SINGLE)
+        buf.Add(CONFIG_LSB_RESET)
+        _dev.Write(buf, True)
+        
+        'wait for conversion to complete
+        buf.Clear()
+        buf.Add(REG_CONFIGURATION)
+        Dim cnt As Integer = 0
+        Dim readBuf As ListOfByte = New ListOfByte
+        Dim tempBuff As Byte
+        While cnt < 150
+            Thread.Sleep(1000)
+            _dev.Write(buf, True)
+            readBuf.Clear()
+            readBuf = _dev.Read(2, True)
+            If readBuf = Nothing Then
+                readBuf = _dev.Read(2, True)
+            End If
+            
+            'check if conversion is complete
+            tempBuff = (readBuf(1) & CONFIG_CONVERSION_READY).ToByte
+            If tempBuff = CONFIG_CONVERSION_READY Then
+                Exit While
+            End If
+            cnt = cnt + 1
+        End While
+        
+        'get result of conversion
+        buf.Clear()
+        buf.Add(REG_RESULT)
+        _dev.Write(buf, True)
+        readBuf = _dev.Read(2, True)
+        _dev.Close()
+        
+        'for testing I2C BUG
+        _dev.Close()
+        
+        
+        Dim rawData As Integer = (readBuf(0).ToInteger << 8) | readBuf(1)
+        Dim mantissa As Integer = rawData & 0x00000fff
+        Dim exponent As Integer = (rawData & 0x0000f000) >> 12
+        
+        If (cnt >= 150) Then
+            Return -1F
+        Else 
+            Return (mantissa.ToFloat * 0.01F * (2F.Pow(exponent)).ToFloat)
+        End If
+    End Function
+    
+    Public Function CheckId() As Boolean
+        Dim buf As ListOfByte = New ListOfByte()
+        buf.Add(REG_MANUFACTURER_ID)
+        
+        _dev.Open(_adr, I2C_SPEED, _scl, _sda)
+        _dev.Write(buf, False)
+        buf.Clear()
+        buf = _dev.Read(2, True)
+        _dev.Close()
+        
+        If buf = Nothing Then
+            Return False
+        End If
+        
+        Dim idx As Integer = 0
+        Dim manufacturerID As Short = buf.ExtractShort(idx, Endianness.Big)
+        
+        If manufacturerID = 0x5449 Then
+            Return True
+        End If
+        
+        Return False
+    End Function
+    
+End Class

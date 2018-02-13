@@ -1,0 +1,161 @@
+﻿Enum TIME_FORMAT As Byte
+    '1: seconds //alternate unix timestamp format
+    '2: seconds as milliseconds (ie ends in 000)
+    '3: milliseconds //unix format
+    '4: seconds.milliseconds
+    '5: microseconds
+    '5: seconds.microseconds
+    NONE = 0
+    T_SECONDS = 1
+    T_SECONDS_AS_MILLISECONDS = 2
+    T_MILLISECONDS = 3
+    T_SECONDS_MILLISECONDS = 4
+    T_MICROSECONDS = 5
+    T_SECONDS_MICROSECONDS = 6
+End Enum
+
+
+Class SenseBoardtwoEvent
+    
+    Shared BME280_1 As BME280
+    Shared luminosity As TSL2561
+    Shared _init As Boolean = False
+    Shared Booted As Boolean = False
+    Shared Alternate As Boolean = False
+    
+    Shared Event Boot()
+        BME280_1 = New BME280
+        If BME280_1.online Then
+            BME280_1.setMode(BME280.FORCED) //set to read-on-demand mode (this is default anyway)
+            My.LedGreen.Set()
+            Thread.Sleep(30000)
+            My.LedGreen.Clear()
+        End If
+        Thread.Delay(1000000)
+        luminosity = New TSL2561(TSL2561.TSL2561_ADDR_FLOAT)
+        _init = luminosity.begin()
+        If _init Then
+            //luminosity.setIntegrationTime(TSL2561.TSL2561_INTEGRATIONTIME_402MS)
+            luminosity.setIntegrationTime(TSL2561.TSL2561_INTEGRATIONTIME_13MS)
+            luminosity.enableAutoRegion(True)
+            My.LedGreen.Set()
+            Thread.Sleep(30000)
+            My.LedGreen.Clear()
+        End If
+        Thread.Sleep(1000000)
+        Booted = True
+    End Event
+    
+    Shared Event readSensors() RaiseEvent Every 30 Seconds
+        '100ms sleep required to ensure sensors are initialized 
+        While Not Booted
+            Thread.Sleep(1000)
+        End While 
+        My.LedRed.Set()
+        Thread.Sleep(30000)
+        My.LedRed.Clear()
+        
+        'TSL2561 measurements
+        Dim lux As Float = -1
+        Dim data As TSL2561Measurement = New TSL2561Measurement
+        If _init Then
+            data = luminosity.getLuminosity()
+            //lux = luminosity.calculateLux(data) 'get illuminance as Short // but does not work
+            //lux = luminosity.calculateLux(data.broadband, data.ir)
+            lux = luminosity.calculateLuxFloat(data.broadband, data.ir)
+            //lux = luminosity.getLuxFloat()
+        End If
+        
+        //memory
+        Dim memory As Integer = My.Device.MemoryAvailable
+        
+        // Create data JSON object (if object is too long - more than 200 bytes, it all goes wrong...)
+        Dim dataJson As Json = New Json
+        If Alternate Then
+            'Timestamp
+            Dim timenow As String = SenseBoardtwoEvent.getUnixTimestamp(TIME_FORMAT.T_MILLISECONDS)
+            Dim Uptime As Integer = My.Device.Uptime
+            Dim Uptime_string As String = SenseBoardtwoEvent.getUptimeString()
+            'general stuff
+            //Dim uid As String = My.Device.Uid.Format("X8")    //replaced by metadata
+            'Battery
+            Dim BattVolt As Integer = My.Device.BatteryVoltage
+            memory = My.Device.MemoryAvailable
+            //dataJson.Add("uid", uid)
+            dataJson.Add("up", Uptime)
+            dataJson.Add("uptime", Uptime_string)
+            dataJson.Add("mem", memory)
+            dataJson.Add("time", timenow)
+            dataJson.Add("Bat", BattVolt)
+            dataJson.Add("luxG", luminosity._tsl2561Gain)
+            dataJson.Add("luxB", data.broadband)
+            dataJson.Add("luxI", data.ir)
+            dataJson.Add("lux", lux)
+        Else
+            'BME280 measurements
+            Dim temperature As Float = BME280_1.readTemperature()
+            Dim humidity As Float = BME280_1.readHumidity()
+            Dim pressure As Float = BME280_1.readPressure()
+            Dim altitudeMeters As Float = BME280_1.readAltitude() //1190.25F
+            Dim altitudeFeet As Float = BME280_1.readAltitudeFeet()
+            Dim dewPoint As Float = BME280_1.readDewPoint()
+            'Internal tmp measurement
+            Dim int_temp As Float = TMP102.GetTemp()
+            memory = My.Device.MemoryAvailable
+            dataJson.Add("mem", memory)
+            dataJson.Add("it", int_temp)
+            dataJson.Add("t", temperature)
+            dataJson.Add("hm", humidity)
+            dataJson.Add("Pr", pressure)
+            dataJson.Add("aM", altitudeMeters)
+            dataJson.Add("Af", altitudeFeet)
+            dataJson.Add("dP", dewPoint)
+            dataJson.Add("luxG", luminosity._tsl2561Gain)
+            dataJson.Add("luxB", data.broadband)
+            dataJson.Add("luxI", data.ir)
+            dataJson.Add("lux", lux)
+        End If 
+        ' Publish the JSON to mcCloud Integration #1 in this Device's Security 
+        ' Domain with a 30-second timeout.
+        My.mcCloud.Integrations.Publish(1, dataJson, 30)
+        
+        Alternate = Not Alternate
+    End Event
+    
+    Shared Function getUnixTimestamp(format As TIME_FORMAT) As String
+        Dim TimestampOffset As Integer = 946670400 //difference between unix epoch and MCThings epoch
+        Dim TimeZoneOffset As Integer = 14400 //timezone does not seem to be working//-18000 //Eastern Time (-5 from Zulu)
+        Dim timenow As Long = (DateTime.Now.ToInteger + TimestampOffset + TimeZoneOffset).ToLong
+        Select format
+            Case TIME_FORMAT.T_SECONDS
+                Return timenow.Format("F0")
+            Case TIME_FORMAT.T_SECONDS_AS_MILLISECONDS
+                Return (timenow * 1000).Format("F0")
+            Case TIME_FORMAT.T_MILLISECONDS
+                Return (timenow * 1000).Format("F0")
+            Case TIME_FORMAT.T_SECONDS_MILLISECONDS
+                Return timenow.Format("F3")
+            Case TIME_FORMAT.T_MICROSECONDS
+                Return (timenow * 1000000).Format("F0")
+            Case TIME_FORMAT.T_SECONDS_MICROSECONDS
+                Return timenow.Format("F6")
+            Case Else
+                Return (timenow * 1000).Format("F0")
+        End Select
+    End Function
+    
+    Shared Function getUptimeString() As String
+        //get uptime in days:hours:minutes:seconds format
+        Dim secs As Integer = My.Device.Uptime
+        
+        Dim day As Integer = (secs / 86400).ToInteger
+        secs -= 86400 * day
+        Dim hrs As Integer = (secs / 3600).ToInteger
+        secs -= 3600 * hrs
+        Dim mins As Integer = (secs / 60).ToInteger
+        secs -= 60 * mins
+        
+        Dim uptime_string As String = day.Format("D3") + ":" + hrs.Format("D2") + ":" + mins.Format("D2") + ":" + secs.Format("D2")
+        Return uptime_string
+    End Function
+End Class

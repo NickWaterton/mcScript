@@ -1,4 +1,4 @@
-﻿Class TMP102
+Class TMP102
     ' Function returns the temperature in degree celcius or 
     ' Float.NaN if something is wrong
     Shared Function GetTemp() As Float

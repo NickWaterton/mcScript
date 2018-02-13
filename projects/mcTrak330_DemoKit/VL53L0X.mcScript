@@ -1,0 +1,106 @@
+﻿Class VL53L0X
+    
+    Const VL53L0X_REG_IDENTIFICATION_MODEL_ID As Byte = 0xc0
+    Const VL53L0X_REG_IDENTIFICATION_REVISION_ID As Byte = 0xc2
+    Const VL53L0X_REG_PRE_RANGE_CONFIG_VCSEL_PERIOD As Byte = 0x50
+    Const VL53L0X_REG_FINAL_RANGE_CONFIG_VCSEL_PERIOD As Byte = 0x70
+    Const VL53L0X_REG_SYSRANGE_START As Byte = 0x00
+    Const VL53L0X_REG_RESULT_INTERRUPT_STATUS As Byte = 0x13
+    Const VL53L0X_REG_RESULT_RANGE_STATUS As Byte = 0x14
+    Const VL53L0X_I2C_ADDRESS As Byte = 0x29
+    Const I2C_SPEED As Integer = 250000
+    
+    Private _sensorI2c As I2c
+    Private _pwrEnPin As Pin
+    Private _shutDownPin As Pin
+    
+    Public Sub New(pwrEnPin As Pin, shutDownPin As Pin)
+        _pwrEnPin = pwrEnPin
+        _shutDownPin = shutDownPin
+        _pwrEnPin.PinMode = PinMode.DigitalOutput
+        _shutDownPin.PinMode = PinMode.DigitalOutput
+        _sensorI2c = My.I2c0
+    End Sub 
+    
+    Public Sub Enable()
+        '_pwrEnPin.PinMode = PinMode.DigitalOutput
+        '_shutDownPin.PinMode = PinMode.DigitalOutput
+        _pwrEnPin.Set()
+        Thread.Sleep(50000)
+        _shutDownPin.Set()
+        Thread.Sleep(200000)
+    End Sub
+    
+    Public Sub Disable()
+        _shutDownPin.Clear()
+        _pwrEnPin.Clear()
+        'put pins back in input mode to save power
+        '_pwrEnPin.PinMode = PinMode.DigitalInput
+        '_shutDownPin.PinMode = PinMode.DigitalInput
+    End Sub
+    
+    Public Function GetDistance() As Integer 
+        
+        Enable()
+        _sensorI2c.Open(VL53L0X_I2C_ADDRESS, I2C_SPEED, My.SCL, My.SDA)
+        Dim buf As ListOfByte = New ListOfByte
+        buf.Add(VL53L0X_REG_SYSRANGE_START)
+        buf.Add(0x01)
+        _sensorI2c.Write(buf, True)
+        
+        Dim cnt As Integer = 0
+        Dim readBuf As ListOfByte = New ListOfByte
+        buf.Clear()
+        buf.Add(VL53L0X_REG_RESULT_RANGE_STATUS)
+        
+        While cnt < 100
+            Thread.Sleep(10000)
+            _sensorI2c.Write(buf, False)
+            readBuf.Clear()
+            readBuf = _sensorI2c.Read(1, True)
+            If readBuf = Nothing Then
+                readBuf = _sensorI2c.Read(2, True)
+            End If
+            Dim tempBuff As Byte
+            tempBuff = (readBuf(0) & 0x01).ToByte
+            If tempBuff = 0x01 Then
+                Exit While
+            End If
+            cnt = cnt + 1            
+        End While
+        readBuf.Clear()
+        buf.Clear()
+        buf.Add(VL53L0X_REG_RESULT_RANGE_STATUS)
+        _sensorI2c.Write(buf, False)
+        readBuf = _sensorI2c.Read(12, True)
+        _sensorI2c.Close()
+        Disable()
+        
+        Dim deviceError As Byte = ((readBuf(0).ToByte & 0x78.ToByte) >> 3).ToByte
+        
+        'If 0 (Data OK) or 0x0B (Range Complete) then send distance in mm, otherwise send negative error code
+        '-1 = VCSEL CONTINUITY TEST FAILURE, -2 = VCSEL WATCHDOG TEST FAILURE, -3 = NO VHV VALUE FOUND, -4 = MSRC NO TARGET  
+        '-5 = SNR CHECK, -6 = RANGE PHASE CHECK, -7 = SIGMA THRESHOLD CHECK, -8 = TCC, -9 = PHASE CONSISTENCY, - 10 = MIN CLIP
+        '-12 = ALGO UNDERFLOW, -13 = ALGO OVERFLOW, -14 = RANGE IGNORE THRESHOLD
+        If deviceError = 0 Or deviceError = 0x0b Then
+            Return readBuf(10).ToInteger << 8 | readBuf(11).ToInteger
+        Else
+            Return deviceError * -1
+        End If
+    End Function
+    
+    Public Function ReadRegisterByte(addr As Byte) As Byte
+        
+        Enable()
+        _sensorI2c.Open(VL53L0X_I2C_ADDRESS, I2C_SPEED, My.SCL, My.SDA)
+        Dim buf As ListOfByte = New ListOfByte
+        buf.Add(addr)
+        _sensorI2c.Write(buf, False)
+        Dim readBuf As ListOfByte = New ListOfByte      
+        readBuf = _sensorI2c.Read(1, True)
+        _sensorI2c.Close()
+        Disable()
+        
+        Return readBuf(0)
+    End Function
+End Class

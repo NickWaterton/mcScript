@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ProjectSetting xmlns:i="http://www.w3.org/2001/XMLSchema-instance" z:Id="i1" xmlns:z="http://schemas.microsoft.com/2003/10/Serialization/" xmlns="http://schemas.mcthings.com/mcstudio">
+  <AutoCompileDisabled>false</AutoCompileDisabled>
+  <DeviceType>Mod330</DeviceType>
+  <DocumentSettings>
+    <DocumentSetting z:Id="i2">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>mcTrak330_DemoKit.mcScript</FileSpec>
+      <Name>mcTrak330_DemoKit</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i3">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>TMP102.mcScript</FileSpec>
+      <Name>TMP102</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i4">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>VL53L0X.mcScript</FileSpec>
+      <Name>VL53L0X</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i5">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>OPT3001.mcScript</FileSpec>
+      <Name>OPT3001</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i6">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>BME280.mcScript</FileSpec>
+      <Name>BME280</Name>
+    </DocumentSetting>
+    <DocumentSetting z:Id="i7">
+      <BreakPointLineNumbers xmlns:d4p1="http://schemas.microsoft.com/2003/10/Serialization/Arrays" />
+      <FileSpec>esp8266.mcscript</FileSpec>
+      <Name>esp8266</Name>
+    </DocumentSetting>
+  </DocumentSettings>
+  <LastDocumentName>esp8266.mcscript</LastDocumentName>
+  <ProjectName>mcTrak330_DemoKit</ProjectName>
+</ProjectSetting>
