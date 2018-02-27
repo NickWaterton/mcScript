@@ -18,6 +18,7 @@
 //
 //TODO: define interrupts
 // N. Waterton 2nd Feb 2018.
+// N. Waterton 27th Feb 2018 changed clipping thresholds in float calculations to be the same as integer calculations.
 
 Class TSL2561Measurement 
     Public broadband As Integer
@@ -523,13 +524,13 @@ Class TSL2561
         Dim clipThreshold As Integer = 0
         Select _tsl2561IntegrationTime
             Case TSL2561_INTEGRATIONTIME_13MS
-                clipThreshold = 5047
+                clipThreshold = TSL2561_CLIPPING_13MS
                 chScale = 402F / 13F
             Case TSL2561_INTEGRATIONTIME_101MS
-                clipThreshold = 37177
+                clipThreshold = TSL2561_CLIPPING_101MS
                 chScale = 402F / 101F
             Case TSL2561_INTEGRATIONTIME_402MS
-                clipThreshold = 65536
+                clipThreshold = TSL2561_CLIPPING_402MS
                 'No scaling (ie 1) ... integration time = 402ms
                 chScale = 1F
         End Select
